@@ -1,0 +1,160 @@
+<!doctype html>
+<!--
+  index.html — the app's page (what you see in the browser).
+  Three screens: Setup, Scan, Results. Only one is shown at a time;
+  app.js switches between them when you click the tabs.
+  Nothing on this page loads from the internet.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Finder</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <!-- Top bar: app name, mode badge, Quit button -->
+  <header class="topbar">
+    <h1>Subscription Finder</h1>
+    <span id="mode-badge" class="badge" hidden>Fake-data mode</span>
+    <button id="quit" class="quiet">Quit</button>
+  </header>
+
+  <!-- The three tabs -->
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="setup" aria-selected="true">1. Setup</button>
+    <button role="tab" data-tab="scan" aria-selected="false">2. Scan</button>
+    <button role="tab" data-tab="results" aria-selected="false">3. Results</button>
+  </nav>
+
+  <main>
+    <!-- ============ SCREEN 1: SETUP ============ -->
+    <section id="tab-setup" class="panel">
+      <h2>Setup</h2>
+      <p class="muted">These are saved on the laptop. Passwords are never saved here.</p>
+
+      <label for="serverURL">Actual server address</label>
+      <input id="serverURL" type="url" placeholder="https://budget.example.com" autocomplete="off" spellcheck="false">
+
+      <label for="syncId">Budget Sync ID</label>
+      <input id="syncId" type="text" placeholder="1cfdbb80-6274-49bf-..." autocomplete="off" spellcheck="false">
+      <p class="hint">Find it in Actual: <b>Settings → Show advanced settings → Sync ID</b>.</p>
+
+      <label for="months">Months of history to look at</label>
+      <input id="months" type="number" min="3" max="60" value="15">
+      <p class="hint">15 or more lets yearly charges show up twice.</p>
+
+      <fieldset>
+        <legend>Local AI labels (optional)</legend>
+        <label class="row"><input id="aiEnabled" type="checkbox"> Use the AI on this laptop to describe each item</label>
+        <label for="model">AI model</label>
+        <select id="model"></select>
+        <div class="status-line">
+          <span id="ollama-light" class="light" aria-hidden="true"></span>
+          <span id="ollama-text">Checking…</span>
+          <button id="ollama-refresh" class="quiet small">Check again</button>
+        </div>
+        <p id="ollama-hint" class="hint"></p>
+      </fieldset>
+
+      <button id="save-settings" class="primary">Save settings</button>
+      <p id="settings-msg" class="msg" role="status"></p>
+
+      <fieldset>
+        <legend>Saved login on this laptop</legend>
+        <p id="keys-text">Checking…</p>
+        <button id="forget-keys" class="quiet" hidden>Forget saved login</button>
+      </fieldset>
+    </section>
+
+    <!-- ============ SCREEN 2: SCAN ============ -->
+    <section id="tab-scan" class="panel" hidden>
+      <h2>Scan</h2>
+      <p id="saved-login-note" class="note" hidden>A saved login is on this laptop, so you can leave the boxes below empty.</p>
+
+      <fieldset>
+        <legend>How do you log in to Actual?</legend>
+        <label class="row"><input type="radio" name="loginType" value="apiKey" checked> API key (recommended)</label>
+        <label class="row"><input type="radio" name="loginType" value="password"> Server password</label>
+      </fieldset>
+
+      <label for="secret" id="secret-label">Actual API key</label>
+      <input id="secret" type="password" autocomplete="off">
+      <p id="secret-hint" class="hint">Make one in Actual: <b>Settings → General → Security → API keys → Add key</b>.</p>
+
+      <label for="encryptionPassword">Encryption password</label>
+      <input id="encryptionPassword" type="password" autocomplete="off">
+      <p class="hint">Leave blank if you don't use end-to-end encryption.</p>
+
+      <label class="row"><input id="remember" type="checkbox"> Remember on this laptop (so you can scan from anywhere without typing)</label>
+
+      <div class="buttons">
+        <button id="btn-test">Test connection</button>
+        <button id="btn-scan" class="primary">Scan my transactions</button>
+        <button id="btn-demo">Try with fake data</button>
+      </div>
+
+      <!-- Progress -->
+      <div id="progress" hidden>
+        <div class="bar"><div id="bar-fill"></div></div>
+        <ol class="steps">
+          <li data-step="connecting">Connecting</li>
+          <li data-step="downloading">Downloading</li>
+          <li data-step="patterns">Finding patterns</li>
+          <li data-step="labeling">Labeling with local AI</li>
+          <li data-step="done">Done</li>
+        </ol>
+      </div>
+      <p id="scan-msg" class="msg" role="status"></p>
+      <p id="scan-code" class="code" hidden></p>
+    </section>
+
+    <!-- ============ SCREEN 3: RESULTS ============ -->
+    <section id="tab-results" class="panel" hidden>
+      <h2>Results</h2>
+      <p id="no-results" class="muted">No results yet. Run a scan on the Scan screen.</p>
+
+      <div id="results-area" hidden>
+        <p id="demo-note" class="note" hidden>These are FAKE demo results.</p>
+        <p id="history-warning" class="warning" hidden></p>
+        <p id="ai-note" class="note" hidden></p>
+
+        <!-- Summary cards -->
+        <div class="cards">
+          <div class="card"><div class="card-label">Recurring, per year (active)</div><div id="total-yearly" class="card-value"></div></div>
+          <div class="card save"><div class="card-label">You'd save per year</div><div id="total-save" class="card-value">$0.00</div></div>
+        </div>
+        <ul id="bucket-counts" class="counts"></ul>
+
+        <!-- Filters -->
+        <div class="filters">
+          <label>Show
+            <select id="status-filter">
+              <option value="all">all items</option>
+              <option value="active">active only</option>
+              <option value="maybe-cancelled">maybe already cancelled</option>
+            </select>
+          </label>
+          <label class="row"><input id="show-stores" type="checkbox"> Show stores &amp; restaurants in pay-as-you-go</label>
+        </div>
+
+        <div id="sections"></div>
+
+        <div class="buttons">
+          <button id="btn-save" class="primary">Save a copy</button>
+          <button id="btn-clear">Clear results</button>
+        </div>
+        <p id="results-msg" class="msg" role="status"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Shown after Quit -->
+  <div id="goodbye" hidden>
+    <h2>The app has stopped.</h2>
+    <p>You can close this browser tab.</p>
+  </div>
+</body>
+</html>

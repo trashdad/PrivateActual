@@ -1,0 +1,11 @@
+# Installed packages (re-created by "npm install")
+node_modules/
+
+# Never commit personal files, even if one ends up here by accident
+settings.json
+saved-keys.dat
+id-salt.txt
+subscriptions-*.html
+sf-actual-cache-*/
+*.pem
+.env
