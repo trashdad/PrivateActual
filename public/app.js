@@ -352,7 +352,7 @@ $('btn-clear').addEventListener('click', async () => {
 
 // ---------- Quit ----------
 $('quit').addEventListener('click', async () => {
-  if (!confirm('Stop the app? Results in memory will be gone.')) return;
+  if (!confirm('Stop the app on the laptop? Results in memory will be gone. It starts again next time you log in to the laptop, or when you double-click its icon there.')) return;
   try { await api('/api/quit', {}); } catch { /* it's stopping anyway */ }
   document.querySelector('main').hidden = true;
   document.querySelector('.tabs').hidden = true;

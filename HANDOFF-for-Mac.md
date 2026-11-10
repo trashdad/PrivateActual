@@ -15,13 +15,14 @@ You are running on the user's Mac. The user is a beginner: explain in plain Engl
 1. **Fake data only.** Never connect to the user's Actual server, never press "Scan my transactions" or "Test connection", never run a real scan.
 2. **Never ask for, type, store or handle** the Actual password, API key or encryption password.
 3. **Never read, print, copy, list, open or screenshot** anything in the laptop's `%USERPROFILE%\.subscription-finder\` folder, `Documents\subscription-reports\`, any `sf-actual-cache-*` folder, or real results. If you need to know whether something worked, ask the user.
-4. When testing the app, start it **only** with `--demo-only` (or `npm run demo`). That mode switches real scans off and uses a throwaway settings folder.
+4. When testing the app, start it **only** with `--demo-only` on port 5180. That mode switches real scans off and uses a throwaway settings folder. The always-on app (port 5172, and the Tailscale address) is the REAL app: never call anything on it except `/api/hello`.
 5. If a step would break a rule, stop and tell the user.
 
 ### Facts
 - Laptop SSH address: `insan@legion` (Windows, RTX 5080 laptop GPU with 16 GB, Ollama already set up).
-- Install folder on the laptop: `%USERPROFILE%\subscription-finder`.
-- App port: `5172` (same on both computers through the tunnel).
+- Install folder on the laptop: `%USERPROFILE%\subscription-finder` (a git checkout).
+- Real app port: `5172`. Use port `5180` for any fake-data testing.
+- Home-base mode: the app runs in the background on Legion and is shared to the user's own devices with Tailscale Serve at `https://legion.<tailnet>.ts.net/`.
 
 ---
 
@@ -36,30 +37,39 @@ Run `ssh -o BatchMode=yes -o ConnectTimeout=8 insan@legion echo ok`.
 ### 2. Node.js on the laptop
 `ssh insan@legion "node --version"`. If it's missing or older than 20, **ask the user** before installing Node LTS (e.g. `winget install OpenJS.NodeJS.LTS`, which may need them at the laptop to approve).
 
-### 3. Copy the project to the laptop (skip node_modules)
-For example, from this folder:
-`tar --exclude=node_modules --exclude=.git -czf - . | ssh insan@legion "mkdir %USERPROFILE%\subscription-finder 2>nul & tar -xzf - -C %USERPROFILE%\subscription-finder"`
-(Windows 10/11 include `tar`.) Then on the laptop: `cd /d %USERPROFILE%\subscription-finder && npm install && npm test`. All tests should pass. Report the pass/fail counts only.
+### 3. Put the project on the laptop with git
+The laptop copy should be a **git checkout**, so `update.cmd` can pull improvements later.
+- Check git is installed: `ssh insan@legion "git --version"`. If not, **ask the user** before installing it (`winget install Git.Git`).
+- Clone: `ssh insan@legion "git clone -b claude/eager-planck-j2khor https://github.com/trashdad/PrivateActual.git %USERPROFILE%\subscription-finder"`.
+  The repo is private, so the laptop needs GitHub sign-in. If the clone asks for credentials or fails, ask the user to run that same command **at the laptop** once, where Git Credential Manager will pop up a GitHub sign-in window.
+- Then: `ssh insan@legion "cd /d %USERPROFILE%\subscription-finder && npm install && npm test"`. All tests should pass. Report the pass/fail counts only.
 
-**Line endings:** the `.bat`/`.cmd` files must have Windows line endings (CRLF). `.gitattributes` handles this for a git checkout. If you copied from an archive, check them.
-
-### 4. Ollama check (fake data only)
+### 4. Ollama check (fake data only, on a SEPARATE port)
 - `ssh insan@legion "curl.exe -s http://127.0.0.1:11434/api/tags"` lists installed models. This contains model names only, so it's fine to read.
 - If `qwen3:14b` isn't there, **ask the user** before running `ollama pull qwen3:14b` (about 9 GB). `gpt-oss:20b` is an alternative.
 - **Is Ollama reachable from an SSH session?** If the curl above works, yes. If it doesn't, check whether the user is logged in at the laptop and whether Ollama's tray app is running. The most reliable setup is Ollama starting at login (its default) plus the user logging in once after each restart. Explain this to the user.
-- Run a fake-data scan with AI on, over the tunnel:
-  1. `ssh -T -L 5172:127.0.0.1:5172 insan@legion "cmd /c \"cd /d %USERPROFILE%\subscription-finder && node server.js --demo-only --tunnel\""` (leave running)
-  2. In another terminal, send the requests the page would send (POSTs need both headers):
-     `curl -s -X POST -H "Origin: http://localhost:5172" -H "X-Subscription-Finder: 1" -H "Content-Type: application/json" -d "{\"aiEnabled\":true,\"model\":\"qwen3:14b\"}" http://localhost:5172/api/settings`
-     `curl -s -X POST -H "Origin: http://localhost:5172" -H "X-Subscription-Finder: 1" -H "Content-Type: application/json" -d "{}" http://localhost:5172/api/demo`
-     wait until `curl -s http://localhost:5172/api/state` shows `"running":false`, then
-     `curl -s http://localhost:5172/api/results`
-  3. These are FAKE results, so you may read them. Show the user a small table of name → kind → what it is.
-  4. Stop the tunnel (Ctrl+C).
+- Run a fake-data scan with AI on. Use **port 5180**, never 5172: the real always-on app uses 5172.
+  1. `ssh -T -L 5180:127.0.0.1:5180 insan@legion "cmd /c \"set SF_PORT=5180&& cd /d %USERPROFILE%\subscription-finder && node server.js --demo-only --no-tailscale --tunnel\""` (leave running)
+  2. **Safety check first:** `curl -s http://localhost:5180/api/hello` must show `"demoOnly":true`. If it doesn't, STOP: you may be talking to the real app.
+  3. Send the requests the page would send (POSTs need both headers):
+     `curl -s -X POST -H "Origin: http://localhost:5180" -H "X-Subscription-Finder: 1" -H "Content-Type: application/json" -d "{\"aiEnabled\":true,\"model\":\"qwen3:14b\"}" http://localhost:5180/api/settings`
+     `curl -s -X POST -H "Origin: http://localhost:5180" -H "X-Subscription-Finder: 1" -H "Content-Type: application/json" -d "{}" http://localhost:5180/api/demo`
+     wait until `curl -s http://localhost:5180/api/state` shows `"running":false`, then
+     `curl -s http://localhost:5180/api/results`
+  4. These are FAKE results, so you may read them. Show the user a small table of name → kind → what it is.
+  5. Stop the tunnel (Ctrl+C).
 
 ### 5. Launchers
-- **Laptop:** copy `launchers\windows\Subscription Finder.bat` to the laptop Desktop. On Windows the Desktop may be redirected to OneDrive, so check both `%USERPROFILE%\Desktop` and `%USERPROFILE%\OneDrive\Desktop`. Ask the user to double-click it at the laptop and confirm the page opens (they can press **Try with fake data**).
-- **Mac:** copy `launchers/mac/Open Subscription Finder.command` to `~/Desktop`, run `chmod +x` on it, and remove the download quarantine flag if present: `xattr -d com.apple.quarantine ~/Desktop/"Open Subscription Finder.command"`. Ask the user to double-click it, press **Try with fake data**, and confirm results appear. Then close the Terminal window and check the app stopped (`curl -s http://localhost:5172/api/hello` should fail).
+- **Laptop:** copy `launchers\windows\Subscription Finder.bat` to the laptop Desktop. On Windows the Desktop may be redirected to OneDrive, so check both `%USERPROFILE%\Desktop` and `%USERPROFILE%\OneDrive\Desktop`.
+- **Mac:** copy `launchers/mac/Open Subscription Finder.command` to `~/Desktop`, run `chmod +x` on it, and remove the download quarantine flag if present: `xattr -d com.apple.quarantine ~/Desktop/"Open Subscription Finder.command"`.
 
-### 6. Finish
-Tell the user in a few plain sentences what was set up, what to double-click on each computer, and the backup commands (README "Backup: typing commands instead"). Remind them: **the first real scan is theirs to do, at the app, not through Claude.** Suggest they create an Actual API key and tick **Remember on this laptop** if they want to scan from anywhere without typing.
+### 6. Home-base mode (Tailscale): the user does this at the laptop
+Ask the user to double-click **`launchers\windows\install-home-base.cmd`** in `%USERPROFILE%\subscription-finder` **at the laptop**. It must run at the laptop: a background app started over SSH would stop when SSH disconnects, and Tailscale may show a one-time "allow HTTPS" link. It prints the address, like `https://legion.<tailnet>.ts.net/`. Ask the user to tell you that address.
+- Put it in the Mac launcher: set `HOME_BASE_URL="https://legion.<tailnet>.ts.net/"` near the top of `~/Desktop/Open Subscription Finder.command`.
+- Check it from the Mac: `curl -s https://legion.<tailnet>.ts.net/api/hello` should show `{"app":"subscription-finder","demoOnly":false}`.
+  **This is the REAL app.** `/api/hello` is the ONLY address you may call on it. Never call `/api/state` (it contains the user's settings), `/api/results`, or anything else there.
+- Ask the user to open that address on their phone, press **Try with fake data**, and check it looks right. Then **Add to Home Screen**.
+- Ask the user to double-click the Mac launcher and confirm it opens the same page.
+
+### 7. Finish
+Tell the user in a few plain sentences what was set up, how to open the app (phone/Mac/any Tailscale device at the address, or the desktop icon at the laptop), how to update it (`update.cmd`), and the backup commands (README "Backup: typing commands instead"). Remind them: **the first real scan is theirs to do, at the app, not through Claude.** Suggest they create an Actual API key and tick **Remember on this laptop**, so scans from the phone don't need typing. Also suggest pressing **Clear results** when finished, since the app keeps running.

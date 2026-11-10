@@ -46,6 +46,8 @@ const STATIC_FILES = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/icon-192.png': ['icon-192.png', 'image/png'],                      // phone home-screen icon
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'], // "Add to Home Screen" info
 };
 
 // Security headers sent with every answer.
@@ -70,7 +72,11 @@ const log = (...words) => console.log('[subscription-finder]', ...words);
 // ---------------------------------------------------------------------
 // createApp: builds the server. Tests call this directly.
 // ---------------------------------------------------------------------
-function createApp({ port = DEFAULT_PORT, demoOnly = false } = {}) {
+//   extraHosts: extra names the app may be visited by, e.g. the laptop's
+//   Tailscale name "legion.tail1234.ts.net" (used with Tailscale Serve).
+//   findHosts: optional function that looks up the Tailscale name again
+//   (used if Tailscale wasn't ready yet when the app started).
+function createApp({ port = DEFAULT_PORT, demoOnly = false, extraHosts = [], findHosts = null } = {}) {
   // Everything the app remembers lives here, in memory only.
   const state = {
     results: null,                               // last scan's results (never written to disk)
@@ -78,8 +84,30 @@ function createApp({ port = DEFAULT_PORT, demoOnly = false } = {}) {
   };
 
   // Which Host / Origin values count as "the app itself".
+  // Like a guest list at the door: this laptop's own names, plus the
+  // Tailscale name (Tailscale Serve brings visitors in under that name).
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+  const addHost = (h) => {
+    const name = String(h || '').trim().toLowerCase().replace(/\.$/, ''); // drop a trailing dot
+    if (!/^[a-z0-9.-]+$/.test(name)) return;                          // ignore anything odd
+    allowedHosts.add(name);                                            // https://name (port 443 is implied)
+    allowedOrigins.add(`https://${name}`);
+  };
+  extraHosts.forEach(addHost);
+
+  // If a visitor arrives under an unknown "*.ts.net" name, ask Tailscale
+  // once more (at most every 30 seconds) in case it wasn't ready at start-up.
+  // Only names Tailscale itself reports are ever added.
+  let lastLookup = 0;
+  async function maybeRefreshHosts(req) {
+    const host = String(req.headers.host || '').toLowerCase();
+    if (!findHosts || allowedHosts.has(host) || !host.endsWith('.ts.net')) return;
+    if (Date.now() - lastLookup < 30000) return;
+    lastLookup = Date.now();
+    const found = await findHosts().catch(() => null);
+    if (found) { addHost(found); log('Tailscale name found; remote access ready'); }
+  }
 
   // --- small helpers for answering ---
   const send = (res, status, body, type = 'application/json; charset=utf-8') => {
@@ -215,6 +243,7 @@ function createApp({ port = DEFAULT_PORT, demoOnly = false } = {}) {
 
   // --- the request handler ---
   async function handle(req, res) {
+    await maybeRefreshHosts(req);
     if (!isAllowed(req)) return send(res, 403, 'Forbidden', 'text/plain; charset=utf-8');
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const route = `${req.method} ${url.pathname}`;
@@ -227,8 +256,8 @@ function createApp({ port = DEFAULT_PORT, demoOnly = false } = {}) {
 
     try {
       switch (route) {
-        case 'GET /api/hello':                                         // "is the app here?"
-          return send(res, 200, { app: 'subscription-finder' });
+        case 'GET /api/hello':                                         // "is the app here?" (+ is it the fake-data copy?)
+          return send(res, 200, { app: 'subscription-finder', demoOnly });
 
         case 'GET /api/state':                                         // everything the page needs to draw itself
           return send(res, 200, {
@@ -316,10 +345,29 @@ async function alreadyRunning(port) {
   } catch { return false; }
 }
 
+// Ask Tailscale for this laptop's full Tailscale name, e.g.
+// "legion.tail1234.ts.net". Returns null if Tailscale isn't installed/on.
+function tailscaleName() {
+  const candidates = process.platform === 'win32'
+    ? ['tailscale', 'C:\\Program Files\\Tailscale\\tailscale.exe']
+    : ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'];
+  const tryOne = (i) => new Promise((resolve) => {
+    if (i >= candidates.length) return resolve(null);
+    execFile(candidates[i], ['status', '--json'], { windowsHide: true, timeout: 4000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      if (err) return resolve(tryOne(i + 1));                          // try the next place
+      try {
+        const name = String(JSON.parse(stdout)?.Self?.DNSName || '').replace(/\.$/, '');
+        resolve(name || null);
+      } catch { resolve(null); }
+    });
+  });
+  return tryOne(0);
+}
+
 // ---------------------------------------------------------------------
 // Started from the command line (npm start, launchers).
 // ---------------------------------------------------------------------
-if (require.main === module) {
+async function main() {
   const args = new Set(process.argv.slice(2));
   const port = Number(process.env.SF_PORT) || DEFAULT_PORT;
   const demoOnly = args.has('--demo-only');
@@ -342,7 +390,13 @@ if (require.main === module) {
     process.stdin.resume();
   }
 
-  const { server } = createApp({ port, demoOnly });
+  // Extra names visitors may use: your Tailscale name (found automatically),
+  // plus any listed in SF_ALLOWED_HOSTS (comma-separated).
+  const extraHosts = (process.env.SF_ALLOWED_HOSTS || '').split(',').map((h) => h.trim()).filter(Boolean);
+  const tsName = args.has('--no-tailscale') ? null : await tailscaleName();
+  if (tsName) extraHosts.push(tsName);
+
+  const { server } = createApp({ port, demoOnly, extraHosts, findHosts: args.has('--no-tailscale') ? null : tailscaleName });
   server.on('error', async (err) => {
     if (err.code === 'EADDRINUSE' && (await alreadyRunning(port))) {
       log('already running at', url);
@@ -354,11 +408,16 @@ if (require.main === module) {
     log('could not start, code:', err.code || 'unknown');
     process.exit(1);
   });
+  // Still only listening on 127.0.0.1. Other devices reach the app only
+  // through Tailscale Serve (see README, "Use it from anywhere").
   server.listen(port, HOST, () => {
     log('running at', url);
+    if (tsName) log(`from your other devices (needs Tailscale Serve on): https://${tsName}/`);
     log('to stop: press the Quit button, or close this window');
     if (args.has('--open')) openBrowser(url);
   });
 }
+
+if (require.main === module) main();
 
 module.exports = { createApp, DEFAULT_PORT, HOST };

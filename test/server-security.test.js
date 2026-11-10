@@ -31,10 +31,14 @@ function request(method, urlPath, headers = {}, body) {
     req.end();
   });
 }
+const TS_NAME = 'legion.example-tailnet.ts.net';                  // a made-up Tailscale name
 const GOOD = { Origin: `http://127.0.0.1:${PORT}`, 'X-Subscription-Finder': '1', 'Content-Type': 'application/json' };
 
 test.before(async () => {
-  app = spawn(process.execPath, ['server.js', '--demo-only'], { cwd: ROOT, env: { ...process.env, SF_PORT: String(PORT) } });
+  app = spawn(process.execPath, ['server.js', '--demo-only', '--no-tailscale'], {
+    cwd: ROOT,
+    env: { ...process.env, SF_PORT: String(PORT), SF_ALLOWED_HOSTS: TS_NAME },   // pretend Tailscale name
+  });
   app.stdout.on('data', (c) => (output += c));
   app.stderr.on('data', (c) => (output += c));
   for (let i = 0; i < 50; i++) {                                // wait up to 5 seconds
@@ -133,4 +137,30 @@ test('the terminal output contains no shop names or amounts', () => {
   const { EXPECTED } = require('../lib/demo-data');
   for (const e of EXPECTED) assert.ok(!output.includes(e.name), 'printed a shop name');
   assert.ok(!/\$\d/.test(output), 'printed an amount');
+});
+
+test('Tailscale Serve visitors (your own devices) are let in', async () => {
+  // Tailscale Serve may pass the Tailscale name as the Host, or 127.0.0.1. Both must work.
+  for (const host of [TS_NAME, `127.0.0.1:${PORT}`]) {
+    const page = await request('GET', '/', { Host: host });
+    assert.equal(page.status, 200, host);
+    const press = await request('POST', '/api/clear', { ...GOOD, Host: host, Origin: `https://${TS_NAME}` }, {});
+    assert.equal(press.status, 200, host);
+  }
+});
+
+test('look-alike Tailscale names and plain http are still rejected', async () => {
+  assert.equal((await request('GET', '/api/state', { Host: 'evil.example-tailnet.ts.net' })).status, 403);
+  assert.equal((await request('GET', '/api/state', { Host: TS_NAME + '.evil.example' })).status, 403);
+  const other = await request('POST', '/api/clear', { ...GOOD, Host: TS_NAME, Origin: 'https://evil.example-tailnet.ts.net' }, {});
+  assert.equal(other.status, 403);
+  const plainHttp = await request('POST', '/api/clear', { ...GOOD, Host: TS_NAME, Origin: `http://${TS_NAME}` }, {});
+  assert.equal(plainHttp.status, 403);
+});
+
+test('phone home-screen files are served', async () => {
+  const m = await request('GET', '/manifest.webmanifest');
+  assert.equal(m.status, 200);
+  assert.equal(JSON.parse(m.body).start_url, '/');
+  assert.equal((await request('GET', '/icon-192.png')).headers['content-type'], 'image/png');
 });

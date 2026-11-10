@@ -11,12 +11,27 @@
 #  Tailscale when you're out).
 # =====================================================================
 
-LAPTOP="insan@legion"                 # who and where to SSH into
+# The app's Tailscale address (home-base mode). Fill this in once
+# install-home-base.cmd has run on the laptop, e.g.
+#   HOME_BASE_URL="https://legion.tail1234.ts.net/"
+# If it's set and answering, this launcher just opens it. No SSH needed.
+HOME_BASE_URL=""
+
+LAPTOP="insan@legion"                 # who and where to SSH into (backup route)
 PORT=5172                             # the app's "door number" (same on both computers)
 URL="http://localhost:$PORT/"         # what the browser opens on the Mac
 REMOTE='cmd /c "%USERPROFILE%\subscription-finder\launchers\windows\start-for-mac.cmd"'
 
 echo "Subscription Finder"
+
+# 0) Home-base mode: is the always-on app answering over Tailscale?
+if [ -n "$HOME_BASE_URL" ] && curl -sf --max-time 5 "${HOME_BASE_URL%/}/api/hello" >/dev/null; then
+  echo "Opening the app on the laptop (over Tailscale)."
+  open "$HOME_BASE_URL"
+  exit 0
+fi
+[ -n "$HOME_BASE_URL" ] && echo "The always-on app didn't answer over Tailscale; trying the SSH route instead."
+
 echo "Connecting to the laptop ($LAPTOP)..."
 
 # 1) Can we reach the laptop at all? (8-second limit, no password prompts)
