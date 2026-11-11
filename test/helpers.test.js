@@ -117,3 +117,13 @@ test('a failed Actual connection still deletes its temporary cache folder', asyn
   const after = fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('sf-actual-cache-')).length;
   assert.equal(after, before, 'cache folder removed');
 });
+
+test("Actual's database engine (better-sqlite3) loads on this computer", () => {
+  // Installed with --ignore-scripts, it must use its ready-made binary.
+  // If this fails, real scans would fail too.
+  const path = require('node:path');
+  const Database = require(path.join(__dirname, '..', 'node_modules', 'better-sqlite3'));
+  const db = new Database(':memory:');
+  assert.equal(db.prepare('select 1 as x').get().x, 1);
+  db.close();
+});

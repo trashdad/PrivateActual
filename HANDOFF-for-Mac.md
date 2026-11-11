@@ -42,7 +42,7 @@ The laptop copy should be a **git checkout**, so `update.cmd` can pull improveme
 - Check git is installed: `ssh insan@legion "git --version"`. If not, **ask the user** before installing it (`winget install Git.Git`).
 - Clone: `ssh insan@legion "git clone -b claude/eager-planck-j2khor https://github.com/trashdad/PrivateActual.git %USERPROFILE%\subscription-finder"`.
   The repo is private, so the laptop needs GitHub sign-in. If the clone asks for credentials or fails, ask the user to run that same command **at the laptop** once, where Git Credential Manager will pop up a GitHub sign-in window.
-- Then: `ssh insan@legion "cd /d %USERPROFILE%\subscription-finder && npm install && npm test"`. All tests should pass. Report the pass/fail counts only.
+- Then: `ssh insan@legion "cd /d %USERPROFILE%\subscription-finder && npm ci --ignore-scripts && npm test"`. All tests should pass. Report the pass/fail counts only.
 
 ### 3b. Match the Actual version (via tower, read-only, two facts only)
 The Actual server runs on **tower**, which is reachable through the laptop: `ssh insan@legion "ssh root@tower <command>"`.
@@ -54,7 +54,7 @@ The Actual server runs on **tower**, which is reachable through the laptop: `ssh
    `ssh insan@legion "ssh root@tower \"docker inspect --format '{{index .Config.Labels \\\"org.opencontainers.image.version\\\"}}' <name>\""`
    If that's empty, try: `ssh insan@legion "ssh root@tower \"docker exec <name> node -p 'require(\\\"/app/package.json\\\").version'\""`
 3. If the version differs from the `@actual-app/api` version in `package.json` (currently `26.11.0`), tell the user, then on the laptop run:
-   `cd /d %USERPROFILE%\subscription-finder && npm install --save-exact @actual-app/api@<version> && npm test`
+   `cd /d %USERPROFILE%\subscription-finder && npm install --save-exact --ignore-scripts @actual-app/api@<version> && npm test`
    Leave the change uncommitted on the laptop, and tell the user so they can ask Claude to make it permanent in GitHub. Otherwise `update.cmd`'s `git pull` will complain about the changed file.
 
 ### 4. Ollama check (fake data only, on a SEPARATE port)

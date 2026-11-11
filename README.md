@@ -140,7 +140,7 @@ A normal certificate (e.g. from Let's Encrypt) needs nothing.
 The `@actual-app/api` package version follows Actual's releases (e.g. `26.11.0`). If your server is much older or newer and scans fail, install the matching version on the laptop (find yours in Actual under **Settings**, or the **?** help menu):
 ```
 cd %USERPROFILE%\subscription-finder
-npm install --save-exact @actual-app/api@<your version>
+npm install --save-exact --ignore-scripts @actual-app/api@<your version>
 ```
 
 ### The AI over SSH (Mac launcher)
@@ -153,7 +153,7 @@ Ollama normally starts when you log in to Windows (it sits in the system tray). 
 1. Install **Node.js LTS** from nodejs.org, **Git** from git-scm.com, **Tailscale**, and Ollama from ollama.com if you want AI labels.
 2. Download the app with git (so it can update itself later). In a Command Prompt:
    `git clone -b claude/eager-planck-j2khor <repo address> %USERPROFILE%\subscription-finder`
-3. In that folder: `npm install`, then `npm test`.
+3. In that folder: `npm ci --ignore-scripts`, then `npm test`. (`--ignore-scripts` skips compiling the database engine, which comes ready-made for Windows.)
 4. Copy `launchers\windows\Subscription Finder.bat` to the Desktop.
 5. On the Mac: copy `launchers/mac/Open Subscription Finder.command` to the Desktop.
 

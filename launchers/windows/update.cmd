@@ -24,6 +24,8 @@ if not exist ".git" (
 )
 
 echo 1/4  Downloading the newest version...
+REM npm sometimes rewrites package-lock.json on its own; undo that so the download isn't blocked.
+git checkout -- package-lock.json 2>nul
 git pull --ff-only
 if errorlevel 1 (
   echo      Download failed. Nothing was changed. Paste the message above to Claude.
@@ -32,7 +34,9 @@ if errorlevel 1 (
 )
 
 echo 2/4  Installing parts...
-call npm install --omit=dev --no-audit --no-fund
+REM "npm ci" installs exactly what package-lock.json lists, without changing it.
+REM "--ignore-scripts" skips compiling the database engine: it ships ready-made for Windows.
+call npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 if errorlevel 1 (
   echo      Install failed. Paste the message above to Claude.
   pause
