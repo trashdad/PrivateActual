@@ -11,11 +11,25 @@
 #  Tailscale when you're out).
 # =====================================================================
 
-# The app's Tailscale address (home-base mode). Fill this in once
-# install-home-base.cmd has run on the laptop, e.g.
+# The app's Tailscale address (home-base mode), e.g.
 #   HOME_BASE_URL="https://legion.tail1234.ts.net/"
-# If it's set and answering, this launcher just opens it. No SSH needed.
+# Leave it empty and the launcher works it out from Tailscale on this Mac.
+# If the address answers, the launcher just opens it. No SSH needed.
 HOME_BASE_URL=""
+LAPTOP_TS_NAME="legion"               # the laptop's name in Tailscale
+
+# Ask Tailscale on this Mac for your tailnet's name (like "tail1234.ts.net")
+# and build the laptop's address from it.
+if [ -z "$HOME_BASE_URL" ]; then
+  TS=""
+  for c in tailscale /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+    if command -v "$c" >/dev/null 2>&1 || [ -x "$c" ]; then TS="$c"; break; fi
+  done
+  if [ -n "$TS" ]; then
+    SUFFIX=$("$TS" status --json 2>/dev/null | grep -o '"MagicDNSSuffix": *"[^"]*"' | head -1 | sed 's/.*: *"\(.*\)"/\1/')
+    [ -n "$SUFFIX" ] && HOME_BASE_URL="https://$LAPTOP_TS_NAME.$SUFFIX/"
+  fi
+fi
 
 LAPTOP="insan@legion"                 # who and where to SSH into (backup route)
 PORT=5172                             # the app's "door number" (same on both computers)

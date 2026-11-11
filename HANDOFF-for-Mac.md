@@ -15,7 +15,7 @@ You are running on the user's Mac. The user is a beginner: explain in plain Engl
 1. **Fake data only.** Never connect to the user's Actual server, never press "Scan my transactions" or "Test connection", never run a real scan.
 2. **Never ask for, type, store or handle** the Actual password, API key or encryption password.
 3. **Never read, print, copy, list, open or screenshot** anything in the laptop's `%USERPROFILE%\.subscription-finder\` folder, `Documents\subscription-reports\`, any `sf-actual-cache-*` folder, or real results. If you need to know whether something worked, ask the user.
-4. When testing the app, start it **only** with `--demo-only` on port 5180. That mode switches real scans off and uses a throwaway settings folder. The always-on app (port 5172, and the Tailscale address) is the REAL app: never call anything on it except `/api/hello`.
+4. When testing the app, start it **only** with `--demo-only` on port 5180. That mode switches real scans off and uses a throwaway settings folder. The always-on app (port 5172, and the Tailscale address) is the REAL app: never call anything on it except `/api/hello` (and `POST /api/quit` to restart it after an update).
 5. If a step would break a rule, stop and tell the user.
 
 ### Facts
@@ -80,7 +80,7 @@ The Actual server runs on **tower**, which is reachable through the laptop: `ssh
 Ask the user to double-click **`launchers\windows\install-home-base.cmd`** in `%USERPROFILE%\subscription-finder` **at the laptop**. It must run at the laptop: a background app started over SSH would stop when SSH disconnects, and Tailscale may show a one-time "allow HTTPS" link. It prints the address, like `https://legion.<tailnet>.ts.net/`. Ask the user to tell you that address.
 - Put it in the Mac launcher: set `HOME_BASE_URL="https://legion.<tailnet>.ts.net/"` near the top of `~/Desktop/Open Subscription Finder.command`.
 - Check it from the Mac: `curl -s https://legion.<tailnet>.ts.net/api/hello` should show `{"app":"subscription-finder","demoOnly":false}`.
-  **This is the REAL app.** `/api/hello` is the ONLY address you may call on it. Never call `/api/state` (it contains the user's settings), `/api/results`, or anything else there.
+  **This is the REAL app.** `/api/hello` is the only address you may read on it (plus `POST /api/quit` to restart it). Never call `/api/state` (it contains the user's settings), `/api/results`, or anything else there.
 - Ask the user to open that address on their phone, press **Try with fake data**, and check it looks right. Then **Add to Home Screen**.
 - Ask the user to double-click the Mac launcher and confirm it opens the same page.
 
